@@ -1,5 +1,7 @@
 import fs from "node:fs";
-const source = fs.readFileSync("server/app.js", "utf8");
+const source = ["server/app.js", "server/uploads.js"]
+  .map((file) => fs.readFileSync(file, "utf8"))
+  .join("\n");
 const routes = [
   ...source.matchAll(
     /app\.(get|post|put|patch|delete)\(\s*["'](\/api[^"']+)["']/g,
@@ -123,6 +125,8 @@ fs.writeFileSync(
   ) + "\n",
 );
 function permission(r) {
+  if (r.path === "/api/maintenance") return "Cron bearer secret";
+  if (r.path.startsWith("/api/uploads/:id")) return "Current uploader";
   if (r.path.startsWith("/api/auth/"))
     return ["POST /api/auth/logout"].includes(r.method + " " + r.path)
       ? "Signed-in member"
@@ -153,6 +157,10 @@ function permission(r) {
 fs.writeFileSync(
   "docs/API.md",
   `# UniArchive REST API\n\nAll paths are relative to the app origin. Responses use JSON except PDF files. Authentication is an HttpOnly session cookie; login sets it. Never place the JWT in localStorage. Mutating requests require X-UniArchive-Client: web; if an Origin header is present it must match APP_URL.\n\n| Method | Path | Permission |\n| --- | --- | --- |\n${routes.map((r) => "| " + r.method + " | " + r.path + " | " + permission(r) + " |").join("\n")}\n\n## Queries\n\n- GET /api/courses: q searches code and name. Department and semester filtering is performed by the interface.\n- GET /api/documents: mode=library (default), mine, saved, or queue. queue requires Admin/Moderator. Filters: course, type, year, kind, q. Queue status: Pending (default), Approved, Rejected.\n- GET /api/documents/:id/file: authenticated inline PDF; download=true sends an attachment and records a download.\n- DELETE /api/courses/:id: returns 409 if approved PDFs exist. Resubmit with confirm=true only after explicit confirmation.\n\n## Input and response behavior\n\nUse the Postman collection for request bodies. A PDF upload is multipart form-data with file, title, type, year, course_id, resource_kind. Maximum file size is configured by Admin between 1 and 20 MB. Types: Note, Slide, Past Paper. Resource categories: Notes, Assignment, Class Task, Summary. Document updates use JSON and return the document to Pending. Review accepts Approved or Rejected and an optional reason up to 500 characters.\n\nNew accounts must verify their university email. Public registration always assigns Student, regardless of extra request properties. Invitations also need password setup. Email tokens are SHA-256 hashed in the database and expire. Resetting a password and changing a role/status revokes existing sessions; logout revokes all the user’s sessions.\n\nErrors use {"error":"Human-readable message"}. Common statuses: 400 invalid input, 401 authentication required, 403 permission denied, 404 missing record, 409 duplicate/conflict/last-admin guard, 429 too many auth attempts. Success responses return an object or list; actions usually return {"message":"..."}. No live billing or payment mutation endpoint exists.\n`,
+);
+fs.appendFileSync(
+  "docs/API.md",
+  fs.readFileSync("docs/API_UPLOADS.md", "utf8"),
 );
 const db = fs.readFileSync("server/db.js", "utf8");
 const schema = [...db.matchAll(/`(CREATE TABLE IF NOT EXISTS[^`]+)`/g)].map(

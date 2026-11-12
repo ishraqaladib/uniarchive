@@ -103,6 +103,14 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
+          <Route
+            path="/privacy"
+            element={
+              <PublicPage>
+                <PrivacyPage />
+              </PublicPage>
+            }
+          />
           <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
           <Route path="/reset-password" element={<AuthPage mode="reset" />} />
           <Route path="/verify-email" element={<AuthPage mode="verify" />} />
@@ -343,11 +351,84 @@ function Footer() {
         <p>UniArchive: Academic Knowledge Repository · CSE 300 &amp; CSE 323</p>
         <nav>
           <Link to="/help">Help</Link>
+          <Link to="/privacy">Privacy</Link>
           <Link to="/plans">Plans</Link>
           <Link to="/login">Login</Link>
         </nav>
       </div>
     </footer>
+  );
+}
+function PrivacyPage() {
+  const { data: config } = useData("/config");
+  return (
+    <article
+      className="panel"
+      style={{
+        maxWidth: 800,
+        margin: "0 auto",
+        padding: "clamp(24px,5vw,48px)",
+      }}
+    >
+      <h1>Privacy at UniArchive</h1>
+      <p>
+        UniArchive stores your name, university email address, a password hash,
+        account role and status, uploaded document details, review decisions,
+        saved documents and download activity to operate this academic
+        repository. Your plain-text password is not stored.
+      </p>
+      <h2>Who can see your work</h2>
+      <p>
+        Pending documents can be read by their uploader and repository
+        reviewers. Approved documents can be read by signed-in members.
+        Administrators manage accounts and repository records. Upload only
+        material you are permitted to share and avoid including confidential
+        personal information in academic files.
+      </p>
+      <h2>Cloud storage and service providers</h2>
+      <p>
+        The hosted application uses Vercel to serve the website and API, TiDB
+        Cloud for account and repository records, and the operator’s Google
+        Drive for PDF storage. Upload chunks are staged temporarily in the
+        database while the PDF is checked and saved to Drive. The configured
+        email service receives your email address and account verification or
+        password reset message. These providers process the information needed
+        to deliver their services.
+      </p>
+      <p>
+        Google Drive access is held by the server using an operator-authorized
+        connection. The application requests the drive.file permission for
+        app-created or explicitly selected files. Members do not need to connect
+        their own Google accounts. Repository PDFs are served through
+        UniArchive’s account access checks.
+      </p>
+      <h2>Cookies and retention</h2>
+      <p>
+        A secure, HttpOnly session cookie keeps you signed in for up to eight
+        hours. Your theme preference is saved in your browser. This application
+        does not add advertising or analytics trackers.
+      </p>
+      <p>
+        Account and document records are retained while they are in use. You can
+        delete your uploads and delete your account in Settings. File removal
+        may wait for a successful storage cleanup retry. Incomplete upload
+        sessions expire after an hour and their chunks are removed by
+        maintenance or when a new upload starts. Infrastructure logs and backups
+        may follow separate provider retention policies.
+      </p>
+      <h2>Questions and account requests</h2>
+      <p>
+        Use Help or contact the administrator who invited you to the repository
+        for access, correction or deletion requests.
+        {config?.supportEmail && (
+          <>
+            {" "}
+            You can also email{" "}
+            <a href={"mailto:" + config.supportEmail}>{config.supportEmail}</a>.
+          </>
+        )}
+      </p>
+    </article>
   );
 }
 function Landing() {
@@ -1455,6 +1536,7 @@ function DocumentForm({
   onSubmit,
   upload = false,
   maxUpload = 20,
+  progress = null,
 }) {
   const { data: courses, err } = useData("/courses");
   const [busy, setBusy] = useState(false),
@@ -1544,7 +1626,15 @@ function DocumentForm({
         className="button primary full"
         disabled={busy || !courses?.length}
       >
-        {busy ? "Saving…" : upload ? "Submit for review" : "Save changes"}
+        {busy
+          ? progress === null
+            ? "Saving…"
+            : progress === 100
+              ? "Checking PDF and saving…"
+              : `Uploading… ${progress}%`
+          : upload
+            ? "Submit for review"
+            : "Save changes"}
       </button>
       {courses?.length === 0 && (
         <p className="muted">
@@ -1557,6 +1647,7 @@ function DocumentForm({
 function UploadPage() {
   const [params] = useSearchParams();
   const [message, setMessage] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(null);
   const { data: config } = useData("/config");
   return (
     <>
@@ -1583,11 +1674,61 @@ function UploadPage() {
           ) : (
             <DocumentForm
               upload
+              progress={uploadProgress}
               maxUpload={config?.maxUploadMb || 20}
               initial={{ course_id: params.get("course") || "" }}
               onSubmit={async (body) => {
-                const d = await api("/documents", { method: "POST", body });
-                setMessage(d.message);
+                if (!config?.chunkedUploads) {
+                  const d = await api("/documents", { method: "POST", body });
+                  setMessage(d.message);
+                  return;
+                }
+                const file = body.get("file");
+                let uploadId;
+                try {
+                  setUploadProgress(0);
+                  const fields = Object.fromEntries(body);
+                  delete fields.file;
+                  const session = await api("/uploads", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      ...fields,
+                      filename: file.name,
+                      size: file.size,
+                    }),
+                  });
+                  uploadId = session.id;
+                  for (
+                    let offset = 0, index = 0;
+                    offset < file.size;
+                    offset += session.chunkSize, index++
+                  ) {
+                    await api(`/uploads/${uploadId}/chunks/${index}`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/octet-stream" },
+                      body: file.slice(offset, offset + session.chunkSize),
+                    });
+                    setUploadProgress(
+                      Math.round(
+                        (Math.min(file.size, offset + session.chunkSize) /
+                          file.size) *
+                          100,
+                      ),
+                    );
+                  }
+                  const result = await api(`/uploads/${uploadId}/complete`, {
+                    method: "POST",
+                  });
+                  setMessage(result.message);
+                } catch (error) {
+                  if (uploadId)
+                    await api(`/uploads/${uploadId}`, {
+                      method: "DELETE",
+                    }).catch(() => {});
+                  throw error;
+                } finally {
+                  setUploadProgress(null);
+                }
               }}
             />
           )}

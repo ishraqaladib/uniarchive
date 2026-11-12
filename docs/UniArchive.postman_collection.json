@@ -828,6 +828,91 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "maintenance",
+      "item": [
+        {
+          "name": "GET /api/maintenance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/maintenance",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "uploads",
+      "item": [
+        {
+          "name": "POST /api/uploads",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/uploads",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/uploads/:id/chunks/:index",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/uploads/{{documentId}}/chunks/:index",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/uploads/:id/complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/uploads/{{documentId}}/complete",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/uploads/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/uploads/{{documentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

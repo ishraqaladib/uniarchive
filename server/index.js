@@ -6,11 +6,8 @@ import fs from "node:fs";
 import { openDatabase, uploadsDir } from "./db.js";
 import { createApp } from "./app.js";
 import { createStorage, flushFileCleanup } from "./storage.js";
-if (process.env.NODE_ENV === "production" && !process.env.SMTP_HOST) {
-  throw new Error(
-    "Configure SMTP_HOST for verification and reset emails in production.",
-  );
-}
+import { assertMailConfiguration } from "./mail.js";
+assertMailConfiguration();
 const db = await openDatabase();
 // Remove orphan PDFs left by an interrupted deletion or upload; never expose storage statically.
 const files = new Set(

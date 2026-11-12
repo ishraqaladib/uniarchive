@@ -5,3 +5,9 @@ dist/
 backups/
 *.zip
 .DS_Store
+
+.vercel/
+.env.*
+!.env.example
+.vercel
+.env*

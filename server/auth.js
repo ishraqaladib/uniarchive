@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
+import { sendMail } from "./mail.js";
 import { dataDir, now } from "./db.js";
 export const production = process.env.NODE_ENV === "production";
 let secret = process.env.JWT_SECRET;
@@ -124,21 +124,8 @@ export async function sendToken(db, user, kind) {
         : "Verify your UniArchive email",
     text: `Hello ${user.name},\n\n${kind === "reset" ? "Reset your password" : "Verify your university email"} using this link:\n${url}\n\nThis link expires ${kind === "reset" ? "in one hour" : "in 24 hours"}. If you did not request this, ignore this message.`,
   };
-  if (process.env.SMTP_HOST) {
-    const transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === "true",
-      ...(process.env.SMTP_USER
-        ? {
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASSWORD,
-            },
-          }
-        : {}),
-    });
-    await transport.sendMail(message);
+  if (process.env.SMTP_HOST || process.env.EMAIL_PROVIDER === "brevo") {
+    await sendMail(message);
   } else {
     if (production) throw new Error("SMTP must be configured in production.");
     const dir = path.join(dataDir, "mail");

@@ -7,7 +7,12 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
-import { PDFDocument } from "pdf-lib";
+import {
+  installUploadRoutes,
+  insertDocument,
+  validatePdf,
+  expireUploads,
+} from "./uploads.js";
 import { z } from "zod";
 import { now } from "./db.js";
 import {
@@ -131,6 +136,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
       supportEmail: process.env.SUPPORT_EMAIL || null,
       emailVerification: true,
       storageProvider: storage.provider,
+      chunkedUploads: storage.provider === "google-drive",
     });
   });
   app.get("/api/stats", async (req, res) => {
@@ -459,17 +465,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
           400,
           `The maximum upload size is ${settings.max_upload_mb} MB.`,
         );
-      if (!req.file.buffer.subarray(0, 5).equals(Buffer.from("%PDF-")))
-        throw error(400, "The uploaded file is not a valid PDF.");
-      try {
-        const p = await PDFDocument.load(req.file.buffer);
-        if (!p.getPageCount()) throw new Error();
-      } catch {
-        throw error(
-          400,
-          "This PDF cannot be read. Upload a valid, unencrypted PDF.",
-        );
-      }
+      await validatePdf(req.file.buffer);
       const id = uid();
       const stored = await storage.put({
         id,
@@ -478,35 +474,14 @@ export function createApp(db, { storage = createStorage() } = {}) {
       });
       try {
         await db.transaction(async (tx) => {
-          const [count] = await tx.query(
-            "SELECT COUNT(*) AS count FROM documents WHERE uploader_id=?",
-            [req.user.id],
-          );
-          if (req.user.role === "Student" && count.count >= 10)
-            throw error(
-              409,
-              "The Free plan allows up to 10 documents. Remove an existing upload before adding another.",
-            );
-          await tx.query(
-            "INSERT INTO documents (id,title,type,resource_kind,year,course_id,uploader_id,file_name,storage_provider,original_name,size_bytes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            [
-              id,
-              b.title,
-              b.type,
-              b.resource_kind,
-              b.year,
-              b.course_id,
-              req.user.id,
-              stored.file_name,
-              stored.storage_provider,
-              path.basename(req.file.originalname),
-              req.file.size,
-              now(),
-            ],
-          );
-          await tx.query(
-            "INSERT INTO submissions (id,document_id,status) VALUES (?,?,?)",
-            [uid(), id, "Pending"],
+          await insertDocument(
+            tx,
+            req.user,
+            b,
+            stored,
+            id,
+            req.file.size,
+            path.basename(req.file.originalname),
           );
         });
       } catch (e) {
@@ -768,6 +743,20 @@ export function createApp(db, { storage = createStorage() } = {}) {
     ]);
     res.json({ message: "Upload limit updated.", maxUploadMb });
   });
+  app.get("/api/maintenance", async (req, res) => {
+    const provided = Buffer.from(req.get("authorization") || "");
+    const expected = Buffer.from("Bearer " + (process.env.CRON_SECRET || ""));
+    if (
+      !process.env.CRON_SECRET ||
+      provided.length !== expected.length ||
+      !crypto.timingSafeEqual(provided, expected)
+    )
+      return res.status(401).json({ error: "Unauthorized." });
+    await expireUploads(db);
+    await flushFileCleanup(db, storage);
+    res.json({ ok: true });
+  });
+  installUploadRoutes(app, db, storage, documentSchema);
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "API endpoint not found." }),
   );
@@ -795,7 +784,9 @@ export function createApp(db, { storage = createStorage() } = {}) {
         error:
           "A selected course or department no longer exists, or this record is still in use.",
       });
-    console.error(err.status ? err.message : err);
+    console.error(
+      err.status ? err.message : production ? "Request failed." : err,
+    );
     res.status(err.status || 500).json({
       error: err.status
         ? err.message

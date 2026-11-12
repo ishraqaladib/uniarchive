@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+.data
+.openai
+node_modules
+backups
+*.zip
+tests
+scripts
+README.md
+docs
+compose.yaml
+Dockerfile

@@ -22,7 +22,22 @@ export async function openDatabase() {
       database: process.env.MYSQL_DATABASE || "uniarchive",
       user: process.env.MYSQL_USER || "uniarchive",
       password: process.env.MYSQL_PASSWORD,
-      connectionLimit: 10,
+      connectionLimit: 3,
+      connectTimeout: 30000,
+      enableKeepAlive: true,
+      maxIdle: 1,
+      idleTimeout: 60000,
+      ...(process.env.MYSQL_SSL === "true"
+        ? {
+            ssl: {
+              rejectUnauthorized: true,
+              verifyIdentity: true,
+              ...(process.env.MYSQL_SSL_CA
+                ? { ca: process.env.MYSQL_SSL_CA.replace(/\\n/g, "\n") }
+                : {}),
+            },
+          }
+        : {}),
     });
   else {
     const SQL = await initSqlJs({
@@ -72,6 +87,7 @@ export async function openDatabase() {
     }
   }
   const db = {
+    dialect: pool ? "mysql" : "sqlite",
     query: (sql, params = []) =>
       lock(async () => {
         const result = await raw(sql, params);
@@ -85,6 +101,7 @@ export async function openDatabase() {
           if (conn) await conn.beginTransaction();
           else sqlite.run("BEGIN");
           const result = await fn({
+            dialect: pool ? "mysql" : "sqlite",
             query: (sql, params = []) => raw(sql, params, conn),
           });
           if (conn) await conn.commit();
@@ -182,6 +199,8 @@ export async function openDatabase() {
 const schema = [
   `CREATE TABLE IF NOT EXISTS file_cleanup (id VARCHAR(36) PRIMARY KEY,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL,created_at VARCHAR(30) NOT NULL,attempts INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS users (id VARCHAR(36) PRIMARY KEY,name VARCHAR(100) NOT NULL,email VARCHAR(254) NOT NULL UNIQUE,password_hash VARCHAR(255) NOT NULL,role VARCHAR(20) NOT NULL,status VARCHAR(20) NOT NULL,verified INTEGER NOT NULL DEFAULT 0,session_version INTEGER NOT NULL DEFAULT 0,created_at VARCHAR(30) NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS upload_sessions (id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(36) NOT NULL,metadata TEXT NOT NULL,total_bytes INTEGER NOT NULL,expires_at VARCHAR(30) NOT NULL,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS upload_chunks (upload_id VARCHAR(36) NOT NULL,chunk_index INTEGER NOT NULL,data MEDIUMBLOB NOT NULL,PRIMARY KEY(upload_id,chunk_index),FOREIGN KEY (upload_id) REFERENCES upload_sessions(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS departments (id VARCHAR(36) PRIMARY KEY,name VARCHAR(120) NOT NULL UNIQUE)`,
   `CREATE TABLE IF NOT EXISTS courses (id VARCHAR(36) PRIMARY KEY,code VARCHAR(30) NOT NULL UNIQUE,name VARCHAR(150) NOT NULL,credits DECIMAL(4,1) NOT NULL,semester INTEGER NOT NULL,department_id VARCHAR(36) NOT NULL,FOREIGN KEY (department_id) REFERENCES departments(id))`,
   `CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id))`,

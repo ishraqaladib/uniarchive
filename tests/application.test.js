@@ -533,7 +533,7 @@ test("UniArchive user, document and administration workflows", async (t) => {
   });
 });
 
-test("Google Drive storage keeps PDFs private and retries failed deletions", async () => {
+test("Google Drive storage, 20 MB chunked uploads, access controls and cleanup retries", async () => {
   const { createStorage, flushFileCleanup, driveFailure } =
     await import("../server/storage.js");
   const { Readable } = await import("node:stream");
@@ -659,6 +659,101 @@ test("Google Drive storage keeps PDFs private and retries failed deletions", asy
     })
     .expect(400);
   assert.equal(objects.size, 0);
+  // Exercise a 20 MB file with every HTTP request below Vercel's payload cap.
+  const large = Buffer.alloc(20 * 1024 * 1024, 32);
+  bytes.copy(large);
+  const session = await mutate(owner.post("/api/uploads"))
+    .send({
+      title: "Chunked cloud PDF",
+      type: "Note",
+      year: 2026,
+      course_id: course.id,
+      filename: "large.pdf",
+      size: large.length,
+    })
+    .expect(201);
+  const uploadId = session.body.id,
+    size = session.body.chunkSize;
+  assert.ok(size < 4.5 * 1024 * 1024);
+  await request(cloudApp).post("/api/uploads").expect(403);
+  await mutate(reader.put(`/api/uploads/${uploadId}/chunks/0`))
+    .set("Content-Type", "application/octet-stream")
+    .send(large.subarray(0, size))
+    .expect(404);
+  await mutate(owner.post(`/api/uploads/${uploadId}/complete`)).expect(409);
+  for (
+    let offset = 0, index = 0;
+    offset < large.length;
+    offset += size, index++
+  ) {
+    await mutate(owner.put(`/api/uploads/${uploadId}/chunks/${index}`))
+      .set("Content-Type", "application/octet-stream")
+      .send(large.subarray(offset, offset + size))
+      .expect(200);
+  }
+  // A retried identical chunk is safe; changed bytes cannot replace it.
+  await mutate(owner.put(`/api/uploads/${uploadId}/chunks/0`))
+    .set("Content-Type", "application/octet-stream")
+    .send(large.subarray(0, size))
+    .expect(200);
+  const changed = Buffer.from(large.subarray(0, size));
+  changed[20] ^= 1;
+  await mutate(owner.put(`/api/uploads/${uploadId}/chunks/0`))
+    .set("Content-Type", "application/octet-stream")
+    .send(changed)
+    .expect(409);
+  await mutate(owner.post(`/api/uploads/${uploadId}/complete`)).expect(201);
+  await mutate(owner.post(`/api/uploads/${uploadId}/complete`)).expect(201);
+  const [chunked] = await db.query("SELECT * FROM documents WHERE id=?", [
+    uploadId,
+  ]);
+  assert.deepEqual(objects.get(chunked.file_name).bytes, large);
+  assert.equal(
+    (
+      await db.query("SELECT * FROM upload_chunks WHERE upload_id=?", [
+        uploadId,
+      ])
+    ).length,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query("SELECT * FROM submissions WHERE document_id=?", [
+        uploadId,
+      ])
+    ).length,
+    1,
+  );
+  await mutate(owner.delete(`/api/documents/${uploadId}`)).expect(200);
+  const expiring = await mutate(owner.post("/api/uploads"))
+    .send({
+      title: "Expired upload",
+      type: "Note",
+      year: 2026,
+      course_id: course.id,
+      filename: "valid.pdf",
+      size: bytes.length,
+    })
+    .expect(201);
+  await mutate(owner.put(`/api/uploads/${expiring.body.id}/chunks/0`))
+    .set("Content-Type", "application/octet-stream")
+    .send(bytes)
+    .expect(200);
+  await db.query("UPDATE upload_sessions SET expires_at=? WHERE id=?", [
+    "2000-01-01T00:00:00.000Z",
+    expiring.body.id,
+  ]);
+  const { expireUploads } = await import("../server/uploads.js");
+  await expireUploads(db);
+  assert.equal(
+    (
+      await db.query("SELECT * FROM upload_chunks WHERE upload_id=?", [
+        expiring.body.id,
+      ])
+    ).length,
+    0,
+  );
+  await request(cloudApp).get("/api/maintenance").expect(401);
   const safeError = driveFailure({
     code: 401,
     config: { headers: { Authorization: "Bearer PRIVATE_SECRET" } },

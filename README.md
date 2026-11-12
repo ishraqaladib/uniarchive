@@ -53,7 +53,7 @@ npm run mail
 
 Open the verification link in a browser and click **Verify email**. For a password reset, use **Forgot password?**, read the local message, and open its reset link. Account invitations send both a verification link and a password setup link. Links are single-use; verify links last 24 hours and reset links one hour. The local mail viewer shows only the last 10 messages. These files contain account links and should stay private.
 
-For real email, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional SMTP credentials, and `SMTP_FROM`. `APP_URL` must be the browser-facing origin used in the email links (and request-origin checks). Production requires a real SMTP service. `SUPPORT_EMAIL` adds a mailto contact action to Help and plans.
+For real email, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional SMTP credentials, and `SMTP_FROM`. `APP_URL` must be the browser-facing origin used in the email links (and request-origin checks). Production requires a real email provider: SMTP or the configured Brevo HTTPS API. `SUPPORT_EMAIL` adds a mailto contact action to Help and plans.
 
 ## Google Drive storage
 
@@ -84,11 +84,15 @@ Then run the same seed/start commands. MySQL starts with its own empty database;
 
 The optional `compose.yaml` runs MySQL and the app locally with Docker Compose. Copy `.env.example` to `.env`, set `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD`, then run `docker compose up --build`. Once healthy, run `docker compose exec app npm run seed`. It binds port 3000 to localhost and uses development email delivery. This is a local demo configuration, not an HTTPS production deployment.
 
+## Free Vercel deployment
+
+A Vercel adapter is included for hosted MySQL/TiDB, owner-authorized Google Drive storage, and Brevo email. It preserves 20 MB PDF support using temporary database chunks and uses a daily maintenance endpoint. See [the Vercel deployment guide](docs/VERCEL.md) and [the verified deployment record](docs/DEPLOYMENT.md). The traditional Node server and local SQLite quick start remain supported.
+
 ## Production operation
 
 Use MySQL for shared deployment. The embedded sql.js database loads SQLite into memory and writes snapshots atomically; it is intended for a single local process. Never run multiple server, seed, admin or backup processes against the same SQLite database at the same time. Stop the app before running those CLI commands against SQLite.
 
-Set `NODE_ENV=production`, a unique random `JWT_SECRET` of at least 32 characters, the public HTTPS `APP_URL`, SMTP settings and `DB_CLIENT=mysql`. Set `HOST=0.0.0.0` only when the server must listen beyond loopback. Put it behind an HTTPS reverse proxy and set `TRUST_PROXY=1` only for a single trusted proxy. Session cookies are Secure in production. Set proxy upload limits above 20 MB to allow multipart overhead. Do not seed the publicly documented demo credentials on a real deployment; use `npm run admin:create` instead. The application deliberately disables demo seeding in production.
+Set `NODE_ENV=production`, a unique random `JWT_SECRET` of at least 32 characters, the public HTTPS `APP_URL`, email provider settings and `DB_CLIENT=mysql`. Set `HOST=0.0.0.0` only when the server must listen beyond loopback. Put it behind an HTTPS reverse proxy and set `TRUST_PROXY=1` only for a single trusted proxy. Session cookies are Secure in production. Set proxy upload limits above 20 MB to allow multipart overhead. Do not seed the publicly documented demo credentials on a real deployment; use `npm run admin:create` instead. The application deliberately disables demo seeding in production.
 
 Authorization is checked on every protected API request against current account status and role. Writes require the application's custom header and a matching request origin when supplied. Passwords and file paths never appear in user/list responses. Uploads stay outside the web root; each file request requires a valid session and document access. Rate limits cover authentication attempts. User input is validated and database values use bound parameters.
 
@@ -119,4 +123,4 @@ Run `npm test` and `npm run build`. The integration suite exercises registration
 
 A live Drive check also uploaded a generated PDF into the connected private folder, approved it through the API, and verified an identical download. That owner-specific connection is excluded from this distribution.
 
-The MySQL adapter and Docker configuration are provided but were not executed against a live MySQL/Docker service in this environment. SMTP delivery needs your provider configuration; local-outbox delivery was exercised. Local concurrency results do not certify campus-network latency or production capacity. See `docs/REQUIREMENTS.md` for coverage and deployment-dependent requirements.
+The MySQL adapter was exercised against a live TiDB Cloud Starter database, including the full 20 MB upload flow through Vercel. Native MySQL and Docker were not executed in this environment. Brevo delivered the administrator setup message and the owner completed password setup and login; direct SMTP still needs provider configuration. Local-outbox delivery was also exercised. Local concurrency results do not certify campus-network latency or production capacity. See `docs/REQUIREMENTS.md` for coverage and deployment-dependent requirements.
