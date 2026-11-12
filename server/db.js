@@ -189,6 +189,70 @@ export async function openDatabase() {
       "ALTER TABLE documents ADD COLUMN storage_provider VARCHAR(20) NOT NULL DEFAULT 'local'",
     );
   }
+  const courseColumns = pool
+    ? await db.query("SHOW COLUMNS FROM courses")
+    : await db.query("PRAGMA table_info(courses)");
+  for (const [column, type] of [
+    ["catalog_status", "VARCHAR(20)"],
+    ["catalog_sources", "TEXT"],
+    ["catalog_note", "TEXT"],
+  ]) {
+    if (!courseColumns.some((c) => (c.Field || c.name) === column)) {
+      try {
+        await db.query(`ALTER TABLE courses ADD COLUMN ${column} ${type}`);
+      } catch (e) {
+        if (
+          e.code !== "ER_DUP_FIELDNAME" &&
+          !/duplicate column name/i.test(e.message)
+        )
+          throw e;
+      }
+    }
+  }
+  if (
+    pool &&
+    courseColumns.some(
+      (c) => ["credits", "semester"].includes(c.Field) && c.Null === "NO",
+    )
+  ) {
+    await db.query(
+      "ALTER TABLE courses MODIFY credits DECIMAL(4,1) NULL, MODIFY semester INTEGER NULL",
+    );
+  } else if (
+    sqlite &&
+    courseColumns.some(
+      (c) => ["credits", "semester"].includes(c.name) && c.notnull,
+    )
+  ) {
+    // SQLite cannot relax NOT NULL in place. Rebuild without changing course IDs or references.
+    sqlite.run("PRAGMA foreign_keys=OFF");
+    try {
+      sqlite.run("BEGIN");
+      sqlite.run(
+        schema
+          .find((sql) => sql.startsWith("CREATE TABLE IF NOT EXISTS courses ("))
+          .replace("courses (", "courses_nullable ("),
+      );
+      const columns =
+        "id,code,name,credits,semester,department_id,catalog_status,catalog_sources,catalog_note";
+      sqlite.run(
+        `INSERT INTO courses_nullable (${columns}) SELECT ${columns} FROM courses`,
+      );
+      sqlite.run("DROP TABLE courses");
+      sqlite.run("ALTER TABLE courses_nullable RENAME TO courses");
+      if (sqlite.exec("PRAGMA foreign_key_check")[0]?.values.length)
+        throw new Error(
+          "Course migration failed referential integrity checks.",
+        );
+      sqlite.run("COMMIT");
+    } catch (e) {
+      sqlite.run("ROLLBACK");
+      throw e;
+    } finally {
+      sqlite.run("PRAGMA foreign_keys=ON");
+    }
+    persist();
+  }
   if (!(await db.query("SELECT * FROM settings WHERE id=?", ["main"])).length)
     await db.query("INSERT INTO settings (id,max_upload_mb) VALUES (?,?)", [
       "main",
@@ -202,7 +266,7 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS upload_sessions (id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(36) NOT NULL,metadata TEXT NOT NULL,total_bytes INTEGER NOT NULL,expires_at VARCHAR(30) NOT NULL,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS upload_chunks (upload_id VARCHAR(36) NOT NULL,chunk_index INTEGER NOT NULL,data MEDIUMBLOB NOT NULL,PRIMARY KEY(upload_id,chunk_index),FOREIGN KEY (upload_id) REFERENCES upload_sessions(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS departments (id VARCHAR(36) PRIMARY KEY,name VARCHAR(120) NOT NULL UNIQUE)`,
-  `CREATE TABLE IF NOT EXISTS courses (id VARCHAR(36) PRIMARY KEY,code VARCHAR(30) NOT NULL UNIQUE,name VARCHAR(150) NOT NULL,credits DECIMAL(4,1) NOT NULL,semester INTEGER NOT NULL,department_id VARCHAR(36) NOT NULL,FOREIGN KEY (department_id) REFERENCES departments(id))`,
+  `CREATE TABLE IF NOT EXISTS courses (id VARCHAR(36) PRIMARY KEY,code VARCHAR(30) NOT NULL UNIQUE,name VARCHAR(150) NOT NULL,credits DECIMAL(4,1),semester INTEGER,department_id VARCHAR(36) NOT NULL,catalog_status VARCHAR(20),catalog_sources TEXT,catalog_note TEXT,FOREIGN KEY (department_id) REFERENCES departments(id))`,
   `CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id))`,
   `CREATE TABLE IF NOT EXISTS submissions (id VARCHAR(36) PRIMARY KEY,document_id VARCHAR(36) NOT NULL UNIQUE,status VARCHAR(20) NOT NULL,reviewed_by VARCHAR(36),reviewed_at VARCHAR(30),reason VARCHAR(500),FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL)`,
   `CREATE TABLE IF NOT EXISTS downloads (id VARCHAR(36) PRIMARY KEY,document_id VARCHAR(36) NOT NULL,user_id VARCHAR(36),created_at VARCHAR(30) NOT NULL,FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL)`,

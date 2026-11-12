@@ -79,17 +79,6 @@ export const roles =
         .json({ error: "You do not have permission for this action." });
     next();
   };
-export function universityEmail(email) {
-  const domain = email.split("@")[1] || "";
-  const allowed = (process.env.UNIVERSITY_DOMAINS || "")
-    .toLowerCase()
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  return allowed.length
-    ? allowed.includes(domain)
-    : /\.edu(?:\.[a-z]{2})?$|\.ac\.[a-z]{2}$/i.test(domain);
-}
 export async function sendToken(db, user, kind) {
   const token = crypto.randomBytes(32).toString("hex");
   const hash = crypto.createHash("sha256").update(token).digest("hex");
@@ -122,7 +111,7 @@ export async function sendToken(db, user, kind) {
       kind === "reset"
         ? "Reset your UniArchive password"
         : "Verify your UniArchive email",
-    text: `Hello ${user.name},\n\n${kind === "reset" ? "Reset your password" : "Verify your university email"} using this link:\n${url}\n\nThis link expires ${kind === "reset" ? "in one hour" : "in 24 hours"}. If you did not request this, ignore this message.`,
+    text: `Hello ${user.name},\n\n${kind === "reset" ? "Reset your password" : "Verify your email"} using this link:\n${url}\n\nThis link expires ${kind === "reset" ? "in one hour" : "in 24 hours"}. If you did not request this, ignore this message.`,
   };
   if (process.env.SMTP_HOST || process.env.EMAIL_PROVIDER === "brevo") {
     await sendMail(message);

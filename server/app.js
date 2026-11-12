@@ -28,7 +28,6 @@ import {
   signSession,
   cookieOptions,
   production,
-  universityEmail,
   sendToken,
 } from "./auth.js";
 const uid = () => crypto.randomUUID();
@@ -52,8 +51,14 @@ const courseSchema = z.object({
     .max(30)
     .transform((s) => s.toUpperCase()),
   name: clean.max(150),
-  credits: z.coerce.number().min(0.5).max(10),
-  semester: z.coerce.number().int().min(1).max(16),
+  credits: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().min(0.5).max(10).nullable(),
+  ),
+  semester: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().int().min(1).max(16).nullable(),
+  ),
   department_id: z.string().uuid(),
 });
 const documentSchema = z.object({
@@ -171,11 +176,6 @@ export function createApp(db, { storage = createStorage() } = {}) {
       .parse(req.body);
     if (b.password !== b.confirmPassword)
       throw error(400, "Passwords must match.");
-    if (!universityEmail(b.email))
-      throw error(
-        400,
-        "Use a university email address. Contact your administrator if your university domain is not recognised.",
-      );
     const hash = await bcrypt.hash(b.password, 12);
     const u = { id: uid(), name: b.name, email: b.email };
     await db.query(
@@ -185,7 +185,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
     await sendToken(db, u, "verify");
     res.status(201).json({
       message:
-        "Account created. Check your university email for a verification link. In local development, run npm run mail to read it.",
+        "Account created. Check your email for a verification link. In local development, run npm run mail to read it.",
     });
   });
   app.post("/api/auth/login", async (req, res) => {
@@ -202,8 +202,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
           u.status.toLowerCase() +
           ". Contact your administrator.",
       );
-    if (!u.verified)
-      throw error(403, "Verify your university email before logging in.");
+    if (!u.verified) throw error(403, "Verify your email before logging in.");
     signSession(res, u);
     res.json({ user: safeUser(u) });
   });
@@ -645,8 +644,6 @@ export function createApp(db, { storage = createStorage() } = {}) {
         role: z.enum(["Student", "Moderator", "Admin"]),
       })
       .parse(req.body);
-    if (!universityEmail(b.email))
-      throw error(400, "A university email address is required.");
     const u = { id: uid(), name: b.name, email: b.email };
     await db.query(
       "INSERT INTO users (id,name,email,password_hash,role,status,verified,session_version,created_at) VALUES (?,?,?,?,?,?,?,?,?)",

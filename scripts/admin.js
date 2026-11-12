@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { openDatabase, now } from "../server/db.js";
 const prompt = createInterface({ input: stdin, output: stdout });
 const name = await prompt.question("Administrator name: ");
-const email = (await prompt.question("University email: "))
+const email = (await prompt.question("Email address: "))
   .trim()
   .toLowerCase();
 prompt.close();

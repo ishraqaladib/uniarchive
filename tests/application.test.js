@@ -12,7 +12,7 @@ process.env.DB_CLIENT = "sqlite";
 process.env.STORAGE_PROVIDER = "local";
 process.env.JWT_SECRET = "test-secret-with-more-than-thirty-two-characters";
 process.env.SMTP_HOST = "";
-process.env.UNIVERSITY_DOMAINS = "";
+process.env.UNIVERSITY_DOMAINS = "restricted.example.edu"; // Obsolete settings must not restrict signup.
 process.env.APP_URL = "http://localhost:3000";
 const { openDatabase } = await import("../server/db.js");
 const { createApp } = await import("../server/app.js");
@@ -62,12 +62,12 @@ test("UniArchive user, document and administration workflows", async (t) => {
     },
   );
   await t.test(
-    "real university registration and email verification",
+    "any-email registration requires verification and rejects invalid input",
     async () => {
       await mutate(other.post("/api/auth/register"))
         .send({
           name: "Other Student",
-          email: "other@gmail.com",
+          email: "not-an-email",
           password: pass,
           confirmPassword: pass,
         })
@@ -75,7 +75,7 @@ test("UniArchive user, document and administration workflows", async (t) => {
       await mutate(other.post("/api/auth/register"))
         .send({
           name: "Other Student",
-          email: "other@example.edu",
+          email: "other@gmail.com",
           password: pass,
           confirmPassword: "wrong",
         })
@@ -83,23 +83,23 @@ test("UniArchive user, document and administration workflows", async (t) => {
       await mutate(other.post("/api/auth/register"))
         .send({
           name: "Other Student",
-          email: "other@example.edu",
+          email: "other@gmail.com",
           password: pass,
           confirmPassword: pass,
           role: "Admin",
         })
         .expect(201);
-      await login(other, "other@example.edu").then((r) =>
+      await login(other, "other@gmail.com").then((r) =>
         assert.equal(r.status, 403),
       );
-      const token = await latestToken("verify", "other@example.edu");
+      const token = await latestToken("verify", "other@gmail.com");
       await mutate(other.post("/api/auth/verify-email"))
         .send({ token })
         .expect(200);
       await mutate(other.post("/api/auth/verify-email"))
         .send({ token })
         .expect(400);
-      const response = await login(other, "other@example.edu");
+      const response = await login(other, "other@gmail.com");
       assert.equal(response.status, 200);
       assert.equal(response.body.user.role, "Student");
       assert.ok(response.headers["set-cookie"][0].includes("HttpOnly"));
@@ -278,6 +278,29 @@ test("UniArchive user, document and administration workflows", async (t) => {
       const dep = await mutate(admin.post("/api/departments"))
         .send({ name: "Test department" })
         .expect(201);
+      const unknown = await mutate(admin.post("/api/courses"))
+        .send({
+          code: "UNKNOWN 101",
+          name: "Course with unverified placement",
+          department_id: dep.body.id,
+          credits: "",
+          semester: "",
+        })
+        .expect(201);
+      const directory = await admin.get("/api/courses");
+      const unspecified = directory.body.find((c) => c.id === unknown.body.id);
+      assert.equal(unspecified.credits, null);
+      assert.equal(unspecified.semester, null);
+      await mutate(admin.put("/api/courses/" + unknown.body.id))
+        .send({
+          code: "UNKNOWN 101",
+          name: unspecified.name,
+          department_id: dep.body.id,
+          credits: 0,
+          semester: 0,
+        })
+        .expect(400);
+      await mutate(admin.delete("/api/courses/" + unknown.body.id)).expect(200);
       const course = {
         code: "TEST 101",
         name: "Test course",
@@ -330,21 +353,44 @@ test("UniArchive user, document and administration workflows", async (t) => {
     },
   );
   await t.test(
+    "admin invites accept personal and custom-domain emails",
+    async () => {
+      for (const email of [
+        "invited@outlook.com",
+        "invited@independent.example",
+      ]) {
+        await mutate(admin.post("/api/users"))
+          .send({ name: "Invited Member", email, role: "Student" })
+          .expect(201);
+        const [user] = await db.query(
+          "SELECT verified FROM users WHERE email=?",
+          [email],
+        );
+        assert.equal(user.verified, 0);
+        assert.ok(await latestToken("verify", email));
+        assert.ok(await latestToken("reset", email));
+      }
+      await mutate(admin.post("/api/users"))
+        .send({ name: "Invalid Email", email: "invalid", role: "Student" })
+        .expect(400);
+    },
+  );
+  await t.test(
     "admin limits, suspends, bans and changes roles with session revocation",
     async () => {
       const users = await admin.get("/api/users");
-      const o = users.body.find((u) => u.email === "other@example.edu");
+      const o = users.body.find((u) => u.email === "other@gmail.com");
       await mutate(admin.patch("/api/users/" + o.id))
         .send({ role: "Moderator", status: "Suspended" })
         .expect(200);
       await other.get("/api/documents").expect(401);
-      await login(other, "other@example.edu").then((r) =>
+      await login(other, "other@gmail.com").then((r) =>
         assert.equal(r.status, 403),
       );
       await mutate(admin.patch("/api/users/" + o.id))
         .send({ role: "Moderator", status: "Active" })
         .expect(200);
-      await login(other, "other@example.edu").then((r) =>
+      await login(other, "other@gmail.com").then((r) =>
         assert.equal(r.status, 200),
       );
       await other.get("/api/documents?mode=queue").expect(200);
@@ -485,7 +531,7 @@ test("UniArchive user, document and administration workflows", async (t) => {
       assert.equal(
         (
           await db.query("SELECT * FROM users WHERE email=?", [
-            "other@example.edu",
+            "other@gmail.com",
           ])
         ).length,
         0,

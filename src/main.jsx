@@ -372,10 +372,10 @@ function PrivacyPage() {
     >
       <h1>Privacy at UniArchive</h1>
       <p>
-        UniArchive stores your name, university email address, a password hash,
-        account role and status, uploaded document details, review decisions,
-        saved documents and download activity to operate this academic
-        repository. Your plain-text password is not stored.
+        UniArchive stores your name, email address, a password hash, account
+        role and status, uploaded document details, review decisions, saved
+        documents and download activity to operate this academic repository.
+        Your plain-text password is not stored.
       </p>
       <h2>Who can see your work</h2>
       <p>
@@ -677,7 +677,7 @@ function AuthPage({ mode }) {
           <p>
             {mode === "login"
               ? "Your notes, uploads and saved courses are waiting."
-              : "Sign up with your university email to upload, search and download reviewed course material."}
+              : "Sign up with any email address to upload, search and download reviewed course material."}
           </p>
         </div>
         <small>CSE 300 &amp; CSE 323 · Web Programming Lab &amp; Project</small>
@@ -697,7 +697,7 @@ function AuthPage({ mode }) {
               : mode === "login"
                 ? "Log in to continue to your dashboard."
                 : mode === "verify"
-                  ? "Confirm ownership of your university email address."
+                  ? "Confirm ownership of your email address."
                   : "We will help you get back to your library."}
           </p>
           <Alert>{err}</Alert>
@@ -714,7 +714,7 @@ function AuthPage({ mode }) {
             )}
             {["signup", "login", "forgot"].includes(mode) && (
               <Field
-                label="University email"
+                label="Email address"
                 name="email"
                 type="email"
                 autoComplete="email"
@@ -785,7 +785,7 @@ function AuthPage({ mode }) {
               className="text-button"
               onClick={() => {
                 const email = prompt(
-                  "University email for a new verification link:",
+                  "Email address for a new verification link:",
                 );
                 if (email)
                   api("/auth/resend-verification", {
@@ -1039,6 +1039,20 @@ function Dashboard() {
     </>
   );
 }
+const courseSemesterLabel = (value) =>
+  value == null ? "Semester not set" : `Semester ${value}`;
+const courseCreditsLabel = (value) =>
+  value == null ? "Credits not set" : `${Number(value)} credits`;
+function CourseEvidence({ course }) {
+  if (!course?.catalog_status) return null;
+  return (
+    <small title={course.catalog_note || undefined}>
+      {course.catalog_status === "2026 routine"
+        ? "Listed in Summer 2026; Autumn offering unverified"
+        : "Earlier source only; current offering unverified"}
+    </small>
+  );
+}
 function LibraryPage({ publicView = false }) {
   const [params, setParams] = useSearchParams();
   const { data: courses, err } = useData("/courses");
@@ -1056,7 +1070,10 @@ function LibraryPage({ publicView = false }) {
   const filtered = courses?.filter(
     (c) =>
       (!dept || c.department_id === dept) &&
-      (!semester || String(c.semester) === semester) &&
+      (!semester ||
+        (semester === "unset"
+          ? c.semester == null
+          : String(c.semester) === semester)) &&
       (!query ||
         `${c.code} ${c.name}`.toLowerCase().includes(query.toLowerCase())),
   );
@@ -1069,7 +1086,7 @@ function LibraryPage({ publicView = false }) {
         }
         text={
           selected
-            ? `${selected.department_name} · Semester ${selected.semester} · ${selected.credits} credits`
+            ? `${selected.department_name} · ${courseSemesterLabel(selected.semester)} · ${courseCreditsLabel(selected.credits)}`
             : "Find your department, semester and course. Your next resource is one search away."
         }
         action={
@@ -1097,7 +1114,7 @@ function LibraryPage({ publicView = false }) {
           {publicView ? (
             <Empty
               title="Log in to browse documents"
-              text="Course files are available to verified university members."
+              text="Course files are available to members with verified email addresses."
             />
           ) : (
             <DocumentsPage embedded courseId={course} />
@@ -1137,7 +1154,16 @@ function LibraryPage({ publicView = false }) {
                 onChange={(e) => filter("semester", e.target.value)}
               >
                 <option value="">All semesters</option>
-                {[...new Set(courses?.map((c) => c.semester))]
+                {courses?.some((c) => c.semester == null) && (
+                  <option value="unset">Not set</option>
+                )}
+                {[
+                  ...new Set(
+                    courses
+                      ?.filter((c) => c.semester != null)
+                      .map((c) => c.semester),
+                  ),
+                ]
                   .sort((a, b) => a - b)
                   .map((s) => (
                     <option key={s} value={s}>
@@ -1171,13 +1197,16 @@ function LibraryPage({ publicView = false }) {
                     <span className="resource-icon">
                       <BookOpen />
                     </span>
-                    <span className="badge">{c.credits} credits</span>
+                    <span className="badge">
+                      {courseCreditsLabel(c.credits)}
+                    </span>
                   </div>
                   <span className="overline">{c.code}</span>
                   <h2>{c.name}</h2>
                   <p>
-                    {c.department_name} · Semester {c.semester}
+                    {c.department_name} · {courseSemesterLabel(c.semester)}
                   </p>
+                  <CourseEvidence course={c} />
                   <div className="course-card-bottom">
                     <span>
                       {c.document_count} approved{" "}
@@ -2062,7 +2091,7 @@ const faqs = [
   ],
   [
     "How do I verify my email or reset a password?",
-    "Use the link sent to your university email. For local development without SMTP, run npm run mail in the project folder to read the messages. Reset links expire after one hour, verification links after 24 hours.",
+    "Use the link sent to your email. For local development without SMTP, run npm run mail in the project folder to read the messages. Reset links expire after one hour, verification links after 24 hours.",
   ],
   [
     "Do I need to pay?",
@@ -2132,7 +2161,11 @@ function CoursesAdmin() {
     <>
       <Heading
         title="Manage courses"
-        text="Keep the department, semester and course directory organised."
+        text={
+          courses
+            ? `${courses.length} courses in the directory. Manage departments, semesters and course details.`
+            : "Manage departments, semesters and course details."
+        }
         action={
           <button className="button primary" onClick={() => setEdit({})}>
             <Plus size={18} />
@@ -2191,10 +2224,11 @@ function CoursesAdmin() {
                 <td>
                   <b>{c.code}</b>
                   <small>{c.name}</small>
+                  <CourseEvidence course={c} />
                 </td>
                 <td>{c.department_name}</td>
-                <td>{c.semester}</td>
-                <td>{c.credits}</td>
+                <td>{c.semester ?? "Not set"}</td>
+                <td>{c.credits ?? "Not set"}</td>
                 <td>{c.document_count}</td>
                 <td>
                   <div className="row-actions">
@@ -2308,8 +2342,8 @@ function CoursesAdmin() {
                 type="number"
                 min="1"
                 max="16"
-                defaultValue={edit.semester || 1}
-                required
+                defaultValue={edit.semester ?? ""}
+                placeholder="Not set"
               />
               <Field
                 name="credits"
@@ -2318,8 +2352,8 @@ function CoursesAdmin() {
                 min="0.5"
                 max="10"
                 step="0.5"
-                defaultValue={edit.credits || 3}
-                required
+                defaultValue={edit.credits ?? ""}
+                placeholder="Not set"
               />
             </div>
             <button className="button primary full" disabled={busy}>
@@ -2552,7 +2586,7 @@ function Account() {
                 <Field name="name" label="Full name" required maxLength={100} />
                 <Field
                   name="email"
-                  label="University email"
+                  label="Email address"
                   type="email"
                   required
                 />

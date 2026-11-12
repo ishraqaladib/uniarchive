@@ -22,7 +22,7 @@ Configure these in the linked Vercel project's Production environment. Secrets m
 - `STORAGE_PROVIDER=google-drive`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_DRIVE_FOLDER_ID`, and `GOOGLE_REDIRECT_URI` matching the owner-authorized client.
 - `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and `EMAIL_FROM_ADDRESS` for a verified sender. Existing SMTP settings remain supported as an alternative.
 - `CRON_SECRET`: random secret protecting daily maintenance.
-- Optional `UNIVERSITY_DOMAINS` and `SUPPORT_EMAIL` as described in the README.
+- Optional `SUPPORT_EMAIL` as described in the README. Any valid email address can register; verification is required.
 
 Set the TiDB spending limit to **$0** and keep Vercel on **Hobby** and Brevo on **Free**. Avoid enabling overage billing or paid trials. Access to the database must be permitted from the backend host's network; review a proposed firewall change before applying it.
 

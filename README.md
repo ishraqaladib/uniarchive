@@ -27,7 +27,7 @@ For frontend development use `npm run dev`. After editing, run `npm run build` b
 ## What works
 
 - Responsive landing page, split signup/login screens, dashboard, sidebar, saved light/dark theme, real repository counters, and resource cards.
-- University email registration, email verification, login/logout and expiring one-use password reset links. Passwords are bcrypt hashed; JWT sessions expire after 8 hours and use HttpOnly cookies.
+- Any-email registration, email verification, login/logout and expiring one-use password reset links. Passwords are bcrypt hashed; JWT sessions expire after 8 hours and use HttpOnly cookies.
 - Department → semester → course browsing, course-code/name search, document search and filters by type, year and resource category.
 - PDF upload with title, type, year and course, server-side validation, admin-configured maximum of 1–20 MB, and a 10-document Free limit for student accounts.
 - Pending/Approved/Rejected submissions. Admins and moderators can preview a file and approve/reject with a review note. Only approved files enter the library.
@@ -43,7 +43,7 @@ Plans and payment history are explicitly sample data. No payment gateway, real s
 
 ## Email and registration
 
-Copy `.env.example` to `.env` to customize configuration. By default, university email addresses ending in `.edu`, `.edu.xx` or `.ac.xx` are accepted. Set `UNIVERSITY_DOMAINS` to a comma-separated allowlist to restrict registration to your institution, for example `student.example.edu.bd,example.edu.bd`. Domain checks alone do not prove enrollment; verification requires access to that university mailbox.
+Copy `.env.example` to `.env` to customize configuration. Registration accepts any valid email address, including personal and custom-domain accounts. Members must verify ownership of that mailbox before signing in.
 
 Without SMTP in local development, verification/reset messages are saved to the private `.data/mail` directory. Run:
 
@@ -124,3 +124,7 @@ Run `npm test` and `npm run build`. The integration suite exercises registration
 A live Drive check also uploaded a generated PDF into the connected private folder, approved it through the API, and verified an identical download. That owner-specific connection is excluded from this distribution.
 
 The MySQL adapter was exercised against a live TiDB Cloud Starter database, including the full 20 MB upload flow through Vercel. Native MySQL and Docker were not executed in this environment. Brevo delivered the administrator setup message and the owner completed password setup and login; direct SMTP still needs provider configuration. Local-outbox delivery was also exercised. Local concurrency results do not certify campus-network latency or production capacity. See `docs/REQUIREMENTS.md` for coverage and deployment-dependent requirements.
+
+## Reviewed course-list imports
+
+`node scripts/import-courses.js reviewed-register.json` reports proposed additions. Add `--apply` to import the reviewed JSON array. Each record includes course_code, course_title, source_term, source_url, verification_status and optional notes/same_title_other_codes. This importer accepts the reviewed Spring 2025/Summer 2026 Metropolitan University register. It detects duplicate codes and conflicting existing names, retains existing course IDs, credits, semesters and file links, and stores source metadata. New records use null credits/semester until verified; both API and UI support this state. Stop the local server first when using SQLite. Use hosted MySQL environment settings to target the live deployment.
