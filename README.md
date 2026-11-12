@@ -1,6 +1,6 @@
 # UniArchive
 
-UniArchive is a university academic repository built from the supplied SRS and UI reference. It includes a React frontend, an Express REST API, authenticated PDF storage, and MySQL support. A persistent embedded SQLite database is the default for easy local setup. No ChatGPT account or sign-in is involved.
+UniArchive is a university academic repository built from the supplied SRS and UI reference. It includes a React frontend, an Express REST API, authenticated local/Google Drive PDF storage, and MySQL support. A persistent embedded SQLite database is the default for easy local setup. No ChatGPT account or sign-in is involved.
 
 ## Quick start
 
@@ -14,11 +14,11 @@ npm start
 
 Open **http://localhost:3000**. The production frontend build is already included in `dist`, so the quick start does not need a build step. `npm run seed` creates illustrative courses, actual sample PDFs, and three verified demo accounts. Seeding is optional and repeatable; it does not reset an existing account's password.
 
-| Role | Email | Demo password |
-| --- | --- | --- |
-| Admin | admin@uniarchive.edu | UniArchive123! |
+| Role                  | Email                    | Demo password  |
+| --------------------- | ------------------------ | -------------- |
+| Admin                 | admin@uniarchive.edu     | UniArchive123! |
 | Moderator / Librarian | moderator@uniarchive.edu | UniArchive123! |
-| Student | student@uniarchive.edu | UniArchive123! |
+| Student               | student@uniarchive.edu   | UniArchive123! |
 
 These credentials are for local demonstration only. For a clean installation, skip seeding and run `npm run admin:create` to create your own administrator interactively. Set `DEMO_PASSWORD` before seeding to use another demo password.
 
@@ -32,7 +32,7 @@ For frontend development use `npm run dev`. After editing, run `npm run build` b
 - PDF upload with title, type, year and course, server-side validation, admin-configured maximum of 1–20 MB, and a 10-document Free limit for student accounts.
 - Pending/Approved/Rejected submissions. Admins and moderators can preview a file and approve/reject with a review note. Only approved files enter the library.
 - Authorized PDF viewing/downloading, saved collections, upload statistics, download tracking and overview charts.
-- Uploader/admin metadata editing and deletion. Editing returns a file to review. Deletion removes its PDF and linked submission, download and saved records.
+- Uploader/admin metadata editing and deletion. Editing returns a file to review. Deletion removes linked submission, download and saved records and queues PDF removal. Failed storage cleanup retries every minute and after restart.
 - Admin department/course CRUD, university member invitations, role changes, suspension, bans and deletion. Access changes immediately invalidate existing sessions. The final active admin cannot be removed.
 - User self-deletion with password confirmation. Deleting a course with approved files requires an additional confirmation.
 - Plans, sample payment history, help FAQs, support email configuration, upload settings, daily backups, a Postman collection, and integration tests.
@@ -54,6 +54,10 @@ npm run mail
 Open the verification link in a browser and click **Verify email**. For a password reset, use **Forgot password?**, read the local message, and open its reset link. Account invitations send both a verification link and a password setup link. Links are single-use; verify links last 24 hours and reset links one hour. The local mail viewer shows only the last 10 messages. These files contain account links and should stay private.
 
 For real email, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional SMTP credentials, and `SMTP_FROM`. `APP_URL` must be the browser-facing origin used in the email links (and request-origin checks). Production requires a real SMTP service. `SUPPORT_EMAIL` adds a mailto contact action to Help and plans.
+
+## Google Drive storage
+
+The application supports your personal Google Drive through an owner-authorized OAuth connection. New PDFs go into a private app folder; people use their UniArchive accounts to upload and read approved documents. Only the server holds Google credentials. Existing local PDFs continue to work and are not automatically migrated. See [the complete Drive and deployment guide](docs/GOOGLE_DRIVE.md).
 
 ## MySQL setup
 
@@ -92,7 +96,7 @@ Authorization is checked on every protected API request against current account 
 
 The running server snapshots the database and uploaded PDFs on startup if no recent backup exists, then every 24 hours while it remains running. It retains the latest 7 snapshots under `.data/backups`. Its write queue prevents local upload/deletion operations during each snapshot. MySQL backups use `mysqldump --single-transaction`; direct external database writes are outside that queue.
 
-To make a manual backup, stop the server and run `npm run backup`. This records the database and PDFs together. Move backups to separate protected storage if you need protection against loss of this computer/server. Failed scheduled backups log a message on the server; monitor those logs.
+To make a manual backup, stop the server and run `npm run backup`. This records the database and local PDFs together. Drive documents are recorded in `cloud-files.json` by their file identifiers; their cloud contents are not downloaded into these backups. Keep a separate protected copy of cloud PDFs and the private connection credentials. Deleting a Drive file through this application removes its contents from Drive, so a database snapshot alone cannot restore it. Move backups to separate protected storage if you need protection against loss of this computer/server. Failed scheduled backups log a message on the server; monitor those logs.
 
 To restore SQLite: stop the server, copy a snapshot's `uniarchive.sqlite` into `.data/uniarchive.sqlite`, replace `.data/uploads` with that snapshot's `uploads` directory, then start the server. Restore the database and uploads from the **same snapshot**. To restore MySQL: stop the app, import `database.sql` into an empty database and restore the matching `uploads` directory before restarting. Backups contain user data and password hashes and must remain private.
 
@@ -111,6 +115,8 @@ The JWT development secret is generated locally and persisted privately, so sess
 
 ## Verification and limits
 
-Run `npm test` and `npm run build`. The integration suite exercises registration/verification, role isolation, actual PDF upload/download, review decisions, metadata re-review, ownership, cascade deletion, settings, session revocation, password reset, persistence, a 20 MB upload, the Free upload cap, and 100 simultaneous directory requests on the local machine. Browser QA covers login, dashboard, library, moderation dialog, account/course administration, themes, and narrow-screen layout.
+Run `npm test` and `npm run build`. The integration suite exercises registration/verification, role isolation, actual PDF upload/download, review decisions, metadata re-review, ownership, cascade deletion, settings, session revocation, password reset, persistence, a 20 MB upload, the Free upload cap, cloud storage authorization and deletion retries using a mocked Drive client, and 100 simultaneous directory requests on the local machine. Browser QA covers login, dashboard, library, moderation dialog, account/course administration, themes, and narrow-screen layout.
+
+A live Drive check also uploaded a generated PDF into the connected private folder, approved it through the API, and verified an identical download. That owner-specific connection is excluded from this distribution.
 
 The MySQL adapter and Docker configuration are provided but were not executed against a live MySQL/Docker service in this environment. SMTP delivery needs your provider configuration; local-outbox delivery was exercised. Local concurrency results do not certify campus-network latency or production capacity. See `docs/REQUIREMENTS.md` for coverage and deployment-dependent requirements.

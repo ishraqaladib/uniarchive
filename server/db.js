@@ -148,9 +148,30 @@ export async function openDatabase() {
         await fs.promises.cp(uploadsDir, path.join(target, "uploads"), {
           recursive: true,
         });
+        const cloudFiles = await raw(
+          "SELECT id,file_name,original_name FROM documents WHERE storage_provider=?",
+          ["google-drive"],
+        );
+        await fs.promises.writeFile(
+          path.join(target, "cloud-files.json"),
+          JSON.stringify(cloudFiles, null, 2),
+          { mode: 0o600 },
+        );
       }),
   };
   for (const sql of schema) await db.query(sql);
+  const documentColumns = pool
+    ? await db.query("SHOW COLUMNS FROM documents")
+    : await db.query("PRAGMA table_info(documents)");
+  if (
+    !documentColumns.some(
+      (column) => (column.Field || column.name) === "storage_provider",
+    )
+  ) {
+    await db.query(
+      "ALTER TABLE documents ADD COLUMN storage_provider VARCHAR(20) NOT NULL DEFAULT 'local'",
+    );
+  }
   if (!(await db.query("SELECT * FROM settings WHERE id=?", ["main"])).length)
     await db.query("INSERT INTO settings (id,max_upload_mb) VALUES (?,?)", [
       "main",
@@ -159,10 +180,11 @@ export async function openDatabase() {
   return db;
 }
 const schema = [
+  `CREATE TABLE IF NOT EXISTS file_cleanup (id VARCHAR(36) PRIMARY KEY,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL,created_at VARCHAR(30) NOT NULL,attempts INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS users (id VARCHAR(36) PRIMARY KEY,name VARCHAR(100) NOT NULL,email VARCHAR(254) NOT NULL UNIQUE,password_hash VARCHAR(255) NOT NULL,role VARCHAR(20) NOT NULL,status VARCHAR(20) NOT NULL,verified INTEGER NOT NULL DEFAULT 0,session_version INTEGER NOT NULL DEFAULT 0,created_at VARCHAR(30) NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS departments (id VARCHAR(36) PRIMARY KEY,name VARCHAR(120) NOT NULL UNIQUE)`,
   `CREATE TABLE IF NOT EXISTS courses (id VARCHAR(36) PRIMARY KEY,code VARCHAR(30) NOT NULL UNIQUE,name VARCHAR(150) NOT NULL,credits DECIMAL(4,1) NOT NULL,semester INTEGER NOT NULL,department_id VARCHAR(36) NOT NULL,FOREIGN KEY (department_id) REFERENCES departments(id))`,
-  `CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id))`,
+  `CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id))`,
   `CREATE TABLE IF NOT EXISTS submissions (id VARCHAR(36) PRIMARY KEY,document_id VARCHAR(36) NOT NULL UNIQUE,status VARCHAR(20) NOT NULL,reviewed_by VARCHAR(36),reviewed_at VARCHAR(30),reason VARCHAR(500),FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL)`,
   `CREATE TABLE IF NOT EXISTS downloads (id VARCHAR(36) PRIMARY KEY,document_id VARCHAR(36) NOT NULL,user_id VARCHAR(36),created_at VARCHAR(30) NOT NULL,FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL)`,
   `CREATE TABLE IF NOT EXISTS payments (id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(36) NOT NULL,plan VARCHAR(20) NOT NULL,amount DECIMAL(8,2) NOT NULL,status VARCHAR(20) NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`,

@@ -9,6 +9,7 @@ const temp = await fs.mkdtemp(path.join(os.tmpdir(), "uniarchive-test-"));
 process.env.DATA_DIR = temp;
 process.env.NODE_ENV = "test";
 process.env.DB_CLIENT = "sqlite";
+process.env.STORAGE_PROVIDER = "local";
 process.env.JWT_SECRET = "test-secret-with-more-than-thirty-two-characters";
 process.env.SMTP_HOST = "";
 process.env.UNIVERSITY_DOMAINS = "";
@@ -530,4 +531,138 @@ test("UniArchive user, document and administration workflows", async (t) => {
       await second.close();
     }
   });
+});
+
+test("Google Drive storage keeps PDFs private and retries failed deletions", async () => {
+  const { createStorage, flushFileCleanup, driveFailure } =
+    await import("../server/storage.js");
+  const { Readable } = await import("node:stream");
+  const objects = new Map();
+  let sequence = 0,
+    failDelete = false;
+  const client = {
+    files: {
+      create: async (request) => {
+        const chunks = [];
+        for await (const chunk of request.media.body) chunks.push(chunk);
+        const id = "cloud-" + ++sequence;
+        objects.set(id, {
+          bytes: Buffer.concat(chunks),
+          meta: { id, ...request.requestBody, trashed: false },
+        });
+        assert.equal(request.media.mimeType, "application/pdf");
+        assert.equal(request.requestBody.permissions, undefined);
+        return { data: { id } };
+      },
+      get: async (request) => {
+        if (request.fileId === "private-folder")
+          return {
+            data: {
+              id: "private-folder",
+              mimeType: "application/vnd.google-apps.folder",
+              trashed: false,
+            },
+          };
+        const item = objects.get(request.fileId);
+        if (!item) throw { code: 404 };
+        return {
+          data: request.alt === "media" ? Readable.from(item.bytes) : item.meta,
+        };
+      },
+      delete: async (request) => {
+        if (failDelete) throw { code: 503 };
+        objects.delete(request.fileId);
+        return { data: {} };
+      },
+    },
+  };
+  const storage = createStorage({
+    provider: "google-drive",
+    driveClient: client,
+    folderId: "private-folder",
+  });
+  await storage.check();
+  const cloudApp = createApp(db, { storage });
+  const owner = request.agent(cloudApp),
+    reader = request.agent(cloudApp);
+  await login(owner, "admin@uniarchive.edu").then((r) =>
+    assert.equal(r.status, 200),
+  );
+  await login(reader, "student@uniarchive.edu", "NewPassword123!").then((r) =>
+    assert.equal(r.status, 200),
+  );
+  const [course] = await db.query("SELECT id FROM courses WHERE code=?", [
+    "CSE 323",
+  ]);
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  const bytes = Buffer.from(await pdf.save());
+  const upload = await mutate(owner.post("/api/documents"))
+    .field("title", "Cloud fixture")
+    .field("type", "Note")
+    .field("year", "2026")
+    .field("course_id", course.id)
+    .attach("file", bytes, {
+      filename: "cloud.pdf",
+      contentType: "application/pdf",
+    })
+    .expect(201);
+  const id = upload.body.id;
+  const [row] = await db.query("SELECT * FROM documents WHERE id=?", [id]);
+  assert.equal(row.storage_provider, "google-drive");
+  assert.ok(objects.has(row.file_name));
+  await request(cloudApp)
+    .get("/api/documents/" + id + "/file")
+    .expect(401);
+  await reader.get("/api/documents/" + id + "/file").expect(403);
+  await mutate(owner.patch("/api/submissions/" + id))
+    .send({ status: "Approved" })
+    .expect(200);
+  const response = await reader
+    .get("/api/documents/" + id + "/file?download=true")
+    .buffer(true)
+    .parse((res, cb) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => cb(null, Buffer.concat(chunks)));
+    })
+    .expect(200);
+  assert.deepEqual(response.body, bytes);
+  const docs = await reader.get("/api/documents");
+  assert.equal(docs.body.find((d) => d.id === id).file_name, undefined);
+  failDelete = true;
+  await mutate(owner.delete("/api/documents/" + id)).expect(200);
+  assert.equal(
+    (await db.query("SELECT * FROM documents WHERE id=?", [id])).length,
+    0,
+  );
+  assert.equal(
+    (await db.query("SELECT * FROM file_cleanup WHERE id=?", [id])).length,
+    1,
+  );
+  assert.ok(objects.has(row.file_name));
+  failDelete = false;
+  await flushFileCleanup(db, storage);
+  assert.equal(objects.size, 0);
+  assert.equal(
+    (await db.query("SELECT * FROM file_cleanup WHERE id=?", [id])).length,
+    0,
+  );
+  await mutate(owner.post("/api/documents"))
+    .field("title", "Rollback fixture")
+    .field("type", "Note")
+    .field("year", "2026")
+    .field("course_id", "00000000-0000-4000-8000-000000000000")
+    .attach("file", bytes, {
+      filename: "cloud.pdf",
+      contentType: "application/pdf",
+    })
+    .expect(400);
+  assert.equal(objects.size, 0);
+  const safeError = driveFailure({
+    code: 401,
+    config: { headers: { Authorization: "Bearer PRIVATE_SECRET" } },
+  });
+  assert.ok(!JSON.stringify(safeError).includes("PRIVATE_SECRET"));
+  assert.match(safeError.message, /expired|revoked/);
 });

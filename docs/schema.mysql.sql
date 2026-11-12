@@ -1,13 +1,15 @@
 -- UniArchive reference schema. The application initializes these tables automatically.
 -- Create/select your database before importing this file.
 
+CREATE TABLE IF NOT EXISTS file_cleanup (id VARCHAR(36) PRIMARY KEY,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL,created_at VARCHAR(30) NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
+
 CREATE TABLE IF NOT EXISTS users (id VARCHAR(36) PRIMARY KEY,name VARCHAR(100) NOT NULL,email VARCHAR(254) NOT NULL UNIQUE,password_hash VARCHAR(255) NOT NULL,role VARCHAR(20) NOT NULL,status VARCHAR(20) NOT NULL,verified INTEGER NOT NULL DEFAULT 0,session_version INTEGER NOT NULL DEFAULT 0,created_at VARCHAR(30) NOT NULL);
 
 CREATE TABLE IF NOT EXISTS departments (id VARCHAR(36) PRIMARY KEY,name VARCHAR(120) NOT NULL UNIQUE);
 
 CREATE TABLE IF NOT EXISTS courses (id VARCHAR(36) PRIMARY KEY,code VARCHAR(30) NOT NULL UNIQUE,name VARCHAR(150) NOT NULL,credits DECIMAL(4,1) NOT NULL,semester INTEGER NOT NULL,department_id VARCHAR(36) NOT NULL,FOREIGN KEY (department_id) REFERENCES departments(id));
 
-CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id));
+CREATE TABLE IF NOT EXISTS documents (id VARCHAR(36) PRIMARY KEY,title VARCHAR(180) NOT NULL,type VARCHAR(20) NOT NULL,resource_kind VARCHAR(20) NOT NULL,year INTEGER NOT NULL,course_id VARCHAR(36) NOT NULL,uploader_id VARCHAR(36) NOT NULL,file_name VARCHAR(255) NOT NULL,storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',original_name VARCHAR(255) NOT NULL,size_bytes INTEGER NOT NULL,created_at VARCHAR(30) NOT NULL,FOREIGN KEY (course_id) REFERENCES courses(id),FOREIGN KEY (uploader_id) REFERENCES users(id));
 
 CREATE TABLE IF NOT EXISTS submissions (id VARCHAR(36) PRIMARY KEY,document_id VARCHAR(36) NOT NULL UNIQUE,status VARCHAR(20) NOT NULL,reviewed_by VARCHAR(36),reviewed_at VARCHAR(30),reason VARCHAR(500),FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL);
 

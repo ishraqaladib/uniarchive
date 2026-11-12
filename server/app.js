@@ -5,11 +5,16 @@ import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
-import { now, uploadsDir } from "./db.js";
+import { now } from "./db.js";
+import {
+  createStorage,
+  flushFileCleanup,
+  queueFileCleanup,
+} from "./storage.js";
 import {
   authentication,
   requireUser,
@@ -78,21 +83,16 @@ function canRead(u, d) {
 }
 async function removeDocs(tx, where, args) {
   const docs = await tx.query(
-    "SELECT id,file_name FROM documents WHERE " + where,
+    "SELECT id,file_name,storage_provider FROM documents WHERE " + where,
     args,
   );
-  for (const d of docs)
+  for (const d of docs) {
+    await queueFileCleanup(tx, d);
     await tx.query("DELETE FROM documents WHERE id=?", [d.id]);
+  }
   return docs;
 }
-async function unlinkDocs(docs) {
-  for (const d of docs)
-    await fs.unlink(path.join(uploadsDir, d.file_name)).catch((e) => {
-      if (e.code !== "ENOENT")
-        console.error("File cleanup failed for document", d.id);
-    });
-}
-export function createApp(db) {
+export function createApp(db, { storage = createStorage() } = {}) {
   const app = express();
   if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
   app.disable("x-powered-by");
@@ -130,6 +130,7 @@ export function createApp(db) {
       maxUploadMb: settings.max_upload_mb,
       supportEmail: process.env.SUPPORT_EMAIL || null,
       emailVerification: true,
+      storageProvider: storage.provider,
     });
   });
   app.get("/api/stats", async (req, res) => {
@@ -364,7 +365,7 @@ export function createApp(db) {
       await tx.query("DELETE FROM courses WHERE id=?", [req.params.id]);
       return d;
     });
-    await unlinkDocs(docs);
+    await flushFileCleanup(db, storage);
     res.json({ message: "Course and its documents deleted." });
   });
   app.get("/api/documents", requireUser, async (req, res) => {
@@ -469,10 +470,11 @@ export function createApp(db) {
           "This PDF cannot be read. Upload a valid, unencrypted PDF.",
         );
       }
-      const id = uid(),
-        filename = id + ".pdf";
-      await fs.writeFile(path.join(uploadsDir, filename), req.file.buffer, {
-        mode: 0o600,
+      const id = uid();
+      const stored = await storage.put({
+        id,
+        buffer: req.file.buffer,
+        name: path.basename(req.file.originalname),
       });
       try {
         await db.transaction(async (tx) => {
@@ -486,7 +488,7 @@ export function createApp(db) {
               "The Free plan allows up to 10 documents. Remove an existing upload before adding another.",
             );
           await tx.query(
-            "INSERT INTO documents (id,title,type,resource_kind,year,course_id,uploader_id,file_name,original_name,size_bytes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO documents (id,title,type,resource_kind,year,course_id,uploader_id,file_name,storage_provider,original_name,size_bytes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             [
               id,
               b.title,
@@ -495,7 +497,8 @@ export function createApp(db) {
               b.year,
               b.course_id,
               req.user.id,
-              filename,
+              stored.file_name,
+              stored.storage_provider,
               path.basename(req.file.originalname),
               req.file.size,
               now(),
@@ -507,7 +510,8 @@ export function createApp(db) {
           );
         });
       } catch (e) {
-        await fs.unlink(path.join(uploadsDir, filename));
+        await queueFileCleanup(db, { id, ...stored });
+        await flushFileCleanup(db, storage);
         throw e;
       }
       res.status(201).json({
@@ -548,30 +552,38 @@ export function createApp(db) {
         );
       return removeDocs(tx, "id=?", [d.id]);
     });
-    await unlinkDocs(docs);
+    await flushFileCleanup(db, storage);
     res.json({ message: "Document deleted." });
   });
   app.get("/api/documents/:id/file", requireUser, async (req, res) => {
     const d = await getDoc(db, req.params.id);
     if (!canRead(req.user, d))
       throw error(403, "This file has not been approved.");
-    const file = path.join(uploadsDir, d.file_name);
-    try {
-      await fs.access(file);
-    } catch {
-      throw error(404, "The stored PDF is missing. Contact the administrator.");
-    }
+    const stream = await storage.open(d);
     if (req.query.download === "true") {
-      await db.query(
-        "INSERT INTO downloads (id,document_id,user_id,created_at) VALUES (?,?,?,?)",
-        [uid(), d.id, req.user.id, now()],
-      );
-      return res.download(file, d.original_name);
+      try {
+        await db.query(
+          "INSERT INTO downloads (id,document_id,user_id,created_at) VALUES (?,?,?,?)",
+          [uid(), d.id, req.user.id, now()],
+        );
+      } catch (e) {
+        stream.destroy();
+        throw e;
+      }
     }
-    res.set("Content-Security-Policy", "sandbox; default-src 'none'");
+    res.attachment(d.original_name);
+    if (req.query.download !== "true")
+      res.set(
+        "Content-Disposition",
+        res.get("Content-Disposition").replace(/^attachment/, "inline"),
+      );
     res.set("Content-Type", "application/pdf");
-    res.set("Content-Disposition", `inline; filename="document.pdf"`);
-    res.sendFile(file);
+    res.set("Content-Security-Policy", "sandbox; default-src 'none'");
+    try {
+      await pipeline(stream, res);
+    } catch {
+      if (!res.destroyed) res.destroy();
+    }
   });
   app.patch(
     "/api/submissions/:id",
@@ -726,7 +738,7 @@ export function createApp(db) {
       await tx.query("DELETE FROM users WHERE id=?", [u.id]);
       return docs;
     });
-    await unlinkDocs(docs);
+    await flushFileCleanup(db, storage);
   }
   app.delete("/api/users/:id", roles("Admin"), async (req, res) => {
     await deleteUser(req.params.id);
