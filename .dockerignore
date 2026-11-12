@@ -1,0 +1,8 @@
+node_modules
+.git
+.openai
+.env
+.data
+backups
+*.zip
+.DS_Store

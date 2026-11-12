@@ -1,0 +1,833 @@
+{
+  "info": {
+    "name": "UniArchive REST API",
+    "description": "University repository API. Login uses an HttpOnly session cookie saved by Postman. Writes require the included custom header.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "courseId",
+      "value": ""
+    },
+    {
+      "key": "documentId",
+      "value": ""
+    },
+    {
+      "key": "departmentId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "config",
+      "item": [
+        {
+          "name": "GET /api/config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/config",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "stats",
+      "item": [
+        {
+          "name": "GET /api/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/stats",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "item": [
+        {
+          "name": "GET /api/auth/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/register",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Your Name\",\n  \"email\": \"you@example.edu\",\n  \"password\": \"YourPassword123!\",\n  \"confirmPassword\": \"YourPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@uniarchive.edu\",\n  \"password\": \"UniArchive123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/forgot-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/forgot-password",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"you@example.edu\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/resend-verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/resend-verification",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"you@example.edu\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/verify-email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/verify-email",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/reset-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/reset-password",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{token}}\",\n  \"password\": \"NewPassword123!\",\n  \"confirmPassword\": \"NewPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "departments",
+      "item": [
+        {
+          "name": "GET /api/departments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/departments",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/departments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/departments",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Computer Science & Engineering\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/departments/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/departments/{{departmentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Computer Science & Engineering\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/departments/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/departments/{{departmentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "courses",
+      "item": [
+        {
+          "name": "GET /api/courses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/courses",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/courses",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/courses",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CSE 323\",\n  \"name\": \"Web Programming Lab\",\n  \"credits\": 3,\n  \"semester\": 6,\n  \"department_id\": \"{{departmentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/courses/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/courses/{{courseId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CSE 323\",\n  \"name\": \"Web Programming Lab\",\n  \"credits\": 3,\n  \"semester\": 6,\n  \"department_id\": \"{{departmentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/courses/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/courses/{{courseId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "documents",
+      "item": [
+        {
+          "name": "GET /api/documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Lab routing notes",
+                  "type": "text"
+                },
+                {
+                  "key": "type",
+                  "value": "Note",
+                  "type": "text"
+                },
+                {
+                  "key": "resource_kind",
+                  "value": "Notes",
+                  "type": "text"
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "type": "text"
+                },
+                {
+                  "key": "course_id",
+                  "value": "{{courseId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/documents/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents/{{documentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Lab routing notes\",\n  \"type\": \"Note\",\n  \"resource_kind\": \"Notes\",\n  \"year\": 2026,\n  \"course_id\": \"{{courseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/documents/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents/{{documentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/documents/:id/file",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents/{{documentId}}/file",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/documents/:id/save",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/documents/{{documentId}}/save",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "submissions",
+      "item": [
+        {
+          "name": "PATCH /api/submissions/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/submissions/{{documentId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Approved\",\n  \"reason\": \"Reviewed and approved.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "overview",
+      "item": [
+        {
+          "name": "GET /api/overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/overview",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "billing",
+      "item": [
+        {
+          "name": "GET /api/billing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/billing",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "item": [
+        {
+          "name": "GET /api/users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/users",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/users",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Member\",\n  \"email\": \"new.member@example.edu\",\n  \"role\": \"Student\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/users/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/users/{{userId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"Moderator\",\n  \"status\": \"Active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/users/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              }
+            ],
+            "url": "{{baseUrl}}/api/users/{{userId}}",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "account",
+      "item": [
+        {
+          "name": "DELETE /api/account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/account",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"YourPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "item": [
+        {
+          "name": "PATCH /api/settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-UniArchive-Client",
+                "value": "web"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/settings",
+            "description": "Session cookie is obtained from Login. See docs/API.md for permissions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxUploadMb\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
