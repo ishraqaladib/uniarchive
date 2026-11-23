@@ -14,6 +14,7 @@ import {
   expireUploads,
 } from "./uploads.js";
 import { z } from "zod";
+import { installAvatarRoutes } from "./avatars.js";
 import { now } from "./db.js";
 import {
   createStorage,
@@ -25,6 +26,7 @@ import {
   requireUser,
   roles,
   safeUser,
+  userSelect,
   signSession,
   cookieOptions,
   production,
@@ -192,7 +194,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
     const b = z
       .object({ email: emailSchema, password: z.string().min(1).max(72) })
       .parse(req.body);
-    const [u] = await db.query("SELECT * FROM users WHERE email=?", [b.email]);
+    const [u] = await db.query(userSelect + " WHERE u.email=?", [b.email]);
     if (!u || !(await bcrypt.compare(b.password, u.password_hash)))
       throw error(401, "Email or password is incorrect.");
     if (u.status !== "Active")
@@ -753,6 +755,7 @@ export function createApp(db, { storage = createStorage() } = {}) {
     await flushFileCleanup(db, storage);
     res.json({ ok: true });
   });
+  installAvatarRoutes(app, db);
   installUploadRoutes(app, db, storage, documentSchema);
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "API endpoint not found." }),

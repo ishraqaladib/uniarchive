@@ -373,9 +373,10 @@ function PrivacyPage() {
       <h1>Privacy at UniArchive</h1>
       <p>
         UniArchive stores your name, email address, a password hash, account
-        role and status, uploaded document details, review decisions, saved
-        documents and download activity to operate this academic repository.
-        Your plain-text password is not stored.
+        role and status, your optional profile picture, uploaded document
+        details, review decisions, saved documents and download activity to
+        operate this academic repository. Your plain-text password is not
+        stored.
       </p>
       <h2>Who can see your work</h2>
       <p>
@@ -931,7 +932,7 @@ function Shell() {
           </form>
           <Theme />
           <Link to="/app/account" className="user-chip">
-            <span className="avatar">{user.name.slice(0, 1)}</span>
+            <Avatar user={user} />
             <span>
               <b>{user.name.split(" ")[0]}</b>
               <small>{user.role}</small>
@@ -2400,6 +2401,134 @@ function CoursesAdmin() {
     </>
   );
 }
+function Avatar({ user, large = false }) {
+  const [failed, setFailed] = useState(null);
+  return (
+    <span className={"avatar" + (large ? " large" : "")}>
+      {user.avatar_url && failed !== user.avatar_url ? (
+        <img
+          src={user.avatar_url}
+          alt={`${user.name}'s profile picture`}
+          onError={() => setFailed(user.avatar_url)}
+        />
+      ) : (
+        user.name.slice(0, 1).toUpperCase()
+      )}
+    </span>
+  );
+}
+function ProfilePicture() {
+  const { user, setUser } = useAuth();
+  const input = useRef(null);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!file) {
+      setPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  function clear() {
+    setFile(null);
+    if (input.current) input.current.value = "";
+  }
+  async function save(remove = false) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const body = new FormData();
+      if (!remove) body.append("picture", file);
+      const result = await api("/account/avatar", {
+        method: remove ? "DELETE" : "PUT",
+        ...(remove ? {} : { body }),
+      });
+      setUser(result.user);
+      clear();
+      setMessage(result.message);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="profile-picture-controls">
+      <label htmlFor="profile-picture">Profile picture</label>
+      <p id="profile-picture-help">JPEG, PNG or WebP · Up to 2 MB</p>
+      <input
+        ref={input}
+        id="profile-picture"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        aria-describedby="profile-picture-help"
+        disabled={busy}
+        onChange={(event) => {
+          const selected = event.target.files?.[0];
+          setError("");
+          setMessage("");
+          clear();
+          if (!selected) return;
+          if (
+            !["image/jpeg", "image/png", "image/webp"].includes(selected.type)
+          ) {
+            setError("Choose a JPEG, PNG, or WebP image.");
+            return;
+          }
+          if (selected.size > 2 * 1024 * 1024) {
+            setError("Profile pictures must be no larger than 2 MB.");
+            return;
+          }
+          setFile(selected);
+        }}
+      />
+      {preview && (
+        <img
+          className="picture-preview"
+          src={preview}
+          alt="New profile picture preview"
+        />
+      )}
+      <div className="picture-actions">
+        {file && (
+          <>
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => save()}
+            >
+              {busy ? "Saving…" : "Save picture"}
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={clear}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+        {user.avatar_url && !file && (
+          <button
+            className="button secondary"
+            disabled={busy}
+            onClick={() => save(true)}
+          >
+            {busy ? "Removing…" : "Remove picture"}
+          </button>
+        )}
+      </div>
+      <Alert>{error}</Alert>
+      <Alert success>{message}</Alert>
+    </div>
+  );
+}
 function Account() {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
@@ -2450,13 +2579,14 @@ function Account() {
       <Alert>{err || loadErr}</Alert>
       <Alert success>{message}</Alert>
       <section className="panel profile-panel">
-        <span className="avatar large">{user.name[0]}</span>
+        <Avatar user={user} large />
         <div>
           <h2>{user.name}</h2>
           <p>{user.email}</p>
           <span className="badge">{user.role}</span>{" "}
           <Status status={user.status} />
         </div>
+        <ProfilePicture />
       </section>
       {user.role === "Admin" && (
         <>

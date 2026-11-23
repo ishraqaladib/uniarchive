@@ -130,6 +130,64 @@ test("UniArchive user, document and administration workflows", async (t) => {
     },
   );
   await t.test(
+    "profile pictures persist, replace, and remain private to their owner",
+    async () => {
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const upload = (agent, bytes = png, name = "photo.png") =>
+        mutate(agent.put("/api/account/avatar")).attach("picture", bytes, name);
+      await upload(request(app)).expect(401);
+      await mutate(student.put("/api/account/avatar")).expect(400);
+      await upload(
+        student,
+        Buffer.from('<svg onload="alert(1)"></svg>'),
+        "fake.png",
+      ).expect(400);
+      const tooLarge = await upload(
+        student,
+        Buffer.alloc(2 * 1024 * 1024 + 1),
+      ).expect(400);
+      assert.match(tooLarge.body.error, /2 MB/);
+      const saved = await upload(student).expect(200);
+      const url = saved.body.user.avatar_url;
+      assert.match(url, /^\/api\/account\/avatar\//);
+      assert.equal(saved.body.user.password_hash, undefined);
+      const image = await student
+        .get(url)
+        .expect(200)
+        .expect("Content-Type", /image\/png/);
+      assert.deepEqual(image.body, png);
+      assert.equal(image.headers["cache-control"], "no-store");
+      await request(app).get(url).expect(401);
+      await other.get(url).expect(404);
+      assert.equal(
+        (await student.get("/api/auth/me")).body.user.avatar_url,
+        url,
+      );
+      assert.equal(
+        (await login(student, "student@uniarchive.edu")).body.user.avatar_url,
+        url,
+      );
+      const replaced = await upload(student).expect(200);
+      assert.notEqual(replaced.body.user.avatar_url, url);
+      await student.get(url).expect(404);
+      const removed = await mutate(
+        student.delete("/api/account/avatar"),
+      ).expect(200);
+      assert.equal(removed.body.user.avatar_url, null);
+      await student.get(replaced.body.user.avatar_url).expect(404);
+      assert.equal(
+        (await student.get("/api/auth/me")).body.user.avatar_url,
+        null,
+      );
+      // Keep photos on two accounts to check disk persistence and account cleanup.
+      await upload(admin).expect(200);
+      await upload(other).expect(200);
+    },
+  );
+  await t.test(
     "lists courses by code and shows approved files only",
     async () => {
       const r = await student.get("/api/courses?q=CSE%20323").expect(200);
@@ -522,6 +580,10 @@ test("UniArchive user, document and administration workflows", async (t) => {
         .send({ password: pass })
         .expect(200);
       await other.get("/api/documents").expect(401);
+      assert.equal(
+        (await db.query("SELECT user_id FROM user_avatars")).length,
+        1,
+      );
       await fs
         .access(path.join(temp, "uploads", uploaded.body.id + ".pdf"))
         .then(
@@ -572,6 +634,15 @@ test("UniArchive user, document and administration workflows", async (t) => {
     try {
       const docs = await second.query("SELECT * FROM documents");
       assert.equal(docs.length, 6);
+      const [photo] = await second.query(
+        "SELECT data,mime_type FROM user_avatars",
+      );
+      assert.equal(photo.mime_type, "image/png");
+      assert.ok(
+        Buffer.from(photo.data)
+          .subarray(0, 8)
+          .equals(Buffer.from("89504e470d0a1a0a", "hex")),
+      );
       assert.ok((await second.query("SELECT * FROM users")).length >= 3);
     } finally {
       await second.close();

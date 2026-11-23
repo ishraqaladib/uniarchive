@@ -17,6 +17,8 @@ if (!secret) {
 }
 if (secret.length < 32)
   throw new Error("JWT_SECRET must contain at least 32 characters.");
+export const userSelect =
+  "SELECT u.*,a.version AS avatar_version FROM users u LEFT JOIN user_avatars a ON a.user_id=u.id";
 export const safeUser = (u) => ({
   id: u.id,
   name: u.name,
@@ -25,6 +27,9 @@ export const safeUser = (u) => ({
   status: u.status,
   verified: !!u.verified,
   created_at: u.created_at,
+  avatar_url: u.avatar_version
+    ? `/api/account/avatar/${u.avatar_version}`
+    : null,
 });
 export const cookieOptions = {
   httpOnly: true,
@@ -49,9 +54,7 @@ export function authentication(db) {
     if (token)
       try {
         const payload = jwt.verify(token, secret, { algorithms: ["HS256"] });
-        const [u] = await db.query("SELECT * FROM users WHERE id=?", [
-          payload.sub,
-        ]);
+        const [u] = await db.query(userSelect + " WHERE u.id=?", [payload.sub]);
         if (
           u &&
           u.status === "Active" &&

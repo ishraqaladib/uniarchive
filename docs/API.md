@@ -66,3 +66,7 @@ Errors use {"error":"Human-readable message"}. Common statuses: 400 invalid inpu
 ## Course catalog metadata
 
 Course credits and semester may be null when not verified. Blank optional fields on course create/edit become null. The interface displays Not set and supports filtering courses without a semester. Imported catalog_status, catalog_sources and catalog_note retain source evidence; these are read-only metadata in the ordinary course form. Earlier-source entries are not confirmed current-term offerings.
+
+### Profile pictures
+
+Authenticated users can upload or replace their own profile picture with `PUT /api/account/avatar` using multipart form data with one `picture` file (JPEG, PNG, or WebP; maximum 2 MB). The response includes the updated `user` and a message. `user.avatar_url` is also included in login and current-user responses; it is null when no picture is set. Fetch that URL using the user's session to display the image. `DELETE /api/account/avatar` removes the picture and returns the updated user. Pictures are stored in the database and deleted automatically with their account.
